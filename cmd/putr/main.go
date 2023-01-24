@@ -187,12 +187,12 @@ func mustLoadStats() {
 func printProgress(w *wallet.SingleAddressLiteWallet, totalBytes, currentBytes uint64, cost types.Currency, duration time.Duration) {
 	balance, _ := w.Balance()
 
-	log.Printf("Uploaded: %v in %v (%v) Total Upload: %v Cost: %v Wallet Balance: %v Wallet Address %v",
+	log.Printf("Uploaded: %v in %v (%v) Cost: %v Total Upload: %v Wallet Balance: %v Wallet Address %v",
 		formatByteString(currentBytes),
 		duration,
 		formatBpsString(currentBytes, duration),
-		totalBytes,
 		cost.HumanString(),
+		formatByteString(totalBytes),
 		balance.HumanString(),
 		w.Address())
 }
