@@ -45,7 +45,7 @@ func getHosts() ([]host, error) {
 	filter.WithMaxStoragePrice(types.SiacoinPrecision.Mul64(2000))
 	filter.WithMaxUploadPrice(types.SiacoinPrecision.Mul64(500))
 	filter.WithMaxContractPrice(types.SiacoinPrecision.Div64(2))
-	filter.WithMinUploadSpeed(1e7) // 10 Mbps
+	filter.WithMinUploadSpeed(5e6) // 5 Mbps
 	filter.WithSort(sia.HostSortUploadSpeed, true)
 
 	var goodHosts []host
