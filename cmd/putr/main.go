@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/n8maninger/putr/renter"
@@ -13,9 +17,19 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type (
+	uploadStats struct {
+		Bytes uint64
+		Cost  types.Currency
+	}
+)
+
 var (
 	dataDir string
 	workers int
+
+	totalUploaded uint64
+	cost          types.Currency
 )
 
 var (
@@ -25,6 +39,8 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			workCh := make(chan host, workers)
 			resultsCh := make(chan uploadResult, 1)
+
+			mustLoadStats()
 
 			wallet := mustLoadWallet()
 			renter, err := renter.New(dataDir)
@@ -38,18 +54,19 @@ var (
 			}
 
 			go func() {
+				var currentUploaded uint64
 				s := rate.Sometimes{First: 3, Interval: time.Minute}
 				// print progress
-				var uploaded uint64
-				var cost types.Currency
 				start := time.Now()
 				for result := range resultsCh {
-					uploaded += result.Bytes
+					totalUploaded += result.Bytes
+					currentUploaded += result.Bytes
 					cost = cost.Add(result.Cost)
+					_ = syncStats(totalUploaded, cost)
 					if result.Err != nil {
 						log.Printf("worker %v error: %v", result.Worker, result.Err)
 					}
-					s.Do(func() { printProgress(wallet, uploaded, cost, time.Since(start)) })
+					s.Do(func() { printProgress(wallet, totalUploaded, currentUploaded, cost, time.Since(start)) })
 				}
 			}()
 
@@ -131,13 +148,50 @@ func formatBpsString(b uint64, t time.Duration) string {
 	return fmt.Sprintf("%.2f %cbps", speed, units[i])
 }
 
-func printProgress(w *wallet.SingleAddressLiteWallet, bytes uint64, cost types.Currency, duration time.Duration) {
+func syncStats(bytes uint64, cost types.Currency) error {
+	tmpFile := filepath.Join(dataDir, "stats.json.tmp")
+	statsFile := filepath.Join(dataDir, "stats.json")
+	f, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("failed to create stats tmp file: %v", err)
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	stats := uploadStats{Bytes: bytes, Cost: cost}
+	if err := enc.Encode(stats); err != nil {
+		return fmt.Errorf("failed to encode stats: %v", err)
+	} else if err := f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync stats: %v", err)
+	} else if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close stats: %v", err)
+	}
+	return os.Rename(tmpFile, statsFile)
+}
+
+func mustLoadStats() {
+	statsFile := filepath.Join(dataDir, "stats.json")
+	f, err := os.Open(statsFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		panic(err)
+	}
+	defer f.Close()
+	dec := json.NewDecoder(f)
+	var stats uploadStats
+	if err := dec.Decode(&stats); err != nil {
+		panic(err)
+	}
+	totalUploaded = stats.Bytes
+	cost = stats.Cost
+}
+
+func printProgress(w *wallet.SingleAddressLiteWallet, totalBytes, currentBytes uint64, cost types.Currency, duration time.Duration) {
 	balance, _ := w.Balance()
 
-	log.Printf("Uploaded: %v in %v (%v) Cost: %v Wallet Balance: %v Wallet Address %v",
-		formatByteString(bytes),
+	log.Printf("Uploaded: %v in %v (%v) Total Upload: %v Cost: %v Wallet Balance: %v Wallet Address %v",
+		formatByteString(currentBytes),
 		duration,
-		formatBpsString(bytes, duration),
+		formatBpsString(currentBytes, duration),
+		totalBytes,
 		cost.HumanString(),
 		balance.HumanString(),
 		w.Address())
