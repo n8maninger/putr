@@ -102,7 +102,7 @@ func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, addres
 	revision := sess.Revision()
 	endHeight := uint64(revision.Revision.NewWindowEnd)
 
-	for i := 0; ; i++ {
+	for {
 		if r.Height() > uint64(revision.Revision.NewWindowStart)-144 {
 			return r.RemoveHostContract(hostPub)
 		}

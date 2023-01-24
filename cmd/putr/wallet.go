@@ -88,7 +88,8 @@ var (
 			if err != nil {
 				log.Fatalln("failed to get wallet balance:", err)
 			}
-			log.Println(balance.HumanString())
+			log.Println("Address:", w.Address())
+			log.Println("Balance:", balance.HumanString())
 		},
 	}
 )
