@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -50,7 +51,7 @@ func getHosts() ([]host, error) {
 
 	var goodHosts []host
 	for i := 0; i < 10; i++ {
-		hosts, err := sc.GetActiveHosts(filter, 0, 500)
+		hosts, err := sc.GetActiveHosts(filter, i, 500)
 		if err != nil {
 			return nil, fmt.Errorf("error getting hosts: %w", err)
 		} else if len(hosts) == 0 {
@@ -68,10 +69,21 @@ func getHosts() ([]host, error) {
 			})
 		}
 	}
+	frand.Shuffle(len(goodHosts), func(i, j int) {
+		goodHosts[i], goodHosts[j] = goodHosts[j], goodHosts[i]
+	})
+	var nickKey rhp.PublicKey
+	if err := nickKey.UnmarshalText([]byte("ed25519:210ad99f0e16a02ef055fdd0fcb6506106afeaab81b6834de96d6187ebae0c42")); err != nil {
+		return nil, fmt.Errorf("error decoding host public key: %w", err)
+	}
+	goodHosts = append([]host{{
+		Address:   "sia2.howitts.co.uk:9982",
+		PublicKey: nickKey,
+	}}, goodHosts...)
 	return goodHosts, nil
 }
 
-func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, address string, uploadFn func(uint64, types.Currency)) error {
+func uploadData(ctx context.Context, r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, address string, uploadFn func(uint64, types.Currency)) error {
 	contract, release, err := r.HostContract(hostPub)
 	if errors.Is(err, renter.ErrNoContract) {
 		// if the renter doesn't have a contract with the host, form one.
@@ -84,13 +96,17 @@ func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, addres
 	}
 	defer release()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	sess, err := r.NewSession(ctx, hostPub, address, contract.ID)
+	sess, err := r.NewSession(sessionCtx, hostPub, address, contract.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
+	go func() {
+		<-ctx.Done()
+		sess.Close()
+	}()
 	defer sess.Close()
 
 	// get the host's current settings
@@ -103,6 +119,11 @@ func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, addres
 	endHeight := uint64(revision.Revision.NewWindowEnd)
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		if r.Height() > uint64(revision.Revision.NewWindowStart)-144 {
 			return r.RemoveHostContract(hostPub)
 		}
@@ -115,8 +136,10 @@ func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, addres
 		cost, collateral := rhp.RPCAppendCost(settings, remainingDuration)
 		_, err := sess.Append(ctx, &sector, cost, collateral)
 		if errors.Is(err, rhp.ErrContractFinalized) || errors.Is(err, rhp.ErrInsufficientFunds) || errors.Is(err, rhp.ErrInsufficientCollateral) {
+			log.Printf("dropping contract with host %v due to error: %v", hostPub, err)
 			return r.RemoveHostContract(hostPub)
 		} else if err != nil && strings.Contains(err.Error(), "bad file size") { // not sure why this happens sometimes
+			log.Printf("dropping contract with host %v due to error: %v", hostPub, err)
 			return r.RemoveHostContract(hostPub)
 		} else if err != nil {
 			return fmt.Errorf("failed to append sector: %w", err)
@@ -125,9 +148,14 @@ func uploadData(r *renter.Renter, w renter.Wallet, hostPub rhp.PublicKey, addres
 	}
 }
 
-func uploadWorker(id int, renter *renter.Renter, wallet renter.Wallet, workCh <-chan host, resultsCh chan<- uploadResult) {
+func uploadWorker(ctx context.Context, id int, renter *renter.Renter, wallet renter.Wallet, workCh <-chan host, resultsCh chan<- uploadResult) {
 	for host := range workCh {
-		err := uploadData(renter, wallet, host.PublicKey, host.Address, func(bytes uint64, cost types.Currency) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		err := uploadData(ctx, renter, wallet, host.PublicKey, host.Address, func(bytes uint64, cost types.Currency) {
 			resultsCh <- uploadResult{
 				Worker:  id,
 				HostKey: host.PublicKey,
