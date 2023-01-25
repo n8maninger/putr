@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/n8maninger/putr/renter"
@@ -21,6 +24,8 @@ type (
 	uploadStats struct {
 		Bytes uint64
 		Cost  types.Currency
+
+		Hosts map[string]uint64
 	}
 )
 
@@ -28,8 +33,11 @@ var (
 	dataDir string
 	workers int
 
+	mu            sync.Mutex
 	totalUploaded uint64
 	cost          types.Currency
+	hostUploaded  = make(map[string]uint64)
+	statsSync     = rate.Sometimes{First: 1, Interval: time.Minute}
 )
 
 var (
@@ -49,8 +57,17 @@ var (
 			}
 			defer renter.Close()
 
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+
+			var wg sync.WaitGroup
 			for i := 0; i < workers; i++ {
-				go uploadWorker(i, renter, wallet, workCh, resultsCh)
+				wg.Add(1)
+				go func(i int) {
+					uploadWorker(ctx, i, renter, wallet, workCh, resultsCh)
+					log.Printf("worker %v done", i)
+					wg.Done()
+				}(i)
 			}
 
 			go func() {
@@ -59,30 +76,47 @@ var (
 				// print progress
 				start := time.Now()
 				for result := range resultsCh {
+					mu.Lock()
 					totalUploaded += result.Bytes
 					currentUploaded += result.Bytes
+					hostUploaded[result.HostKey.String()] += result.Bytes
 					cost = cost.Add(result.Cost)
-					_ = syncStats(totalUploaded, cost)
+					mu.Unlock()
 					if result.Err != nil {
-						log.Printf("worker %v error: %v", result.Worker, result.Err)
+						log.Printf("worker %v error with host %v: %v", result.Worker, result.HostKey, result.Err)
 					}
-					s.Do(func() { printProgress(wallet, totalUploaded, currentUploaded, cost, time.Since(start)) })
+					s.Do(func() {
+						_ = syncStats()
+						printProgress(wallet, totalUploaded, currentUploaded, cost, time.Since(start))
+					})
 				}
 			}()
 
-			for {
-				hosts, err := getHosts()
-				if err != nil {
-					log.Fatalln(err)
-				}
+			go func() {
+				for {
+					hosts, err := getHosts()
+					if err != nil {
+						log.Fatalln(err)
+					}
 
-				if len(hosts) < workers {
-					log.Printf("%v hosts -- too few for %v workers", len(hosts), workers)
-				}
+					if len(hosts) < workers {
+						log.Printf("%v hosts -- too few for %v workers", len(hosts), workers)
+					}
 
-				for _, host := range hosts {
-					workCh <- host
+					for _, host := range hosts {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+						workCh <- host
+					}
 				}
+			}()
+
+			wg.Wait()
+			if err := syncStats(); err != nil {
+				log.Fatalln(err)
 			}
 		},
 	}
@@ -101,6 +135,22 @@ var (
 			tbl := table.New("ID", "Host Key", "Expiration Height")
 			for _, contract := range contracts {
 				tbl.AddRow(contract.ID, contract.HostKey, contract.ExpirationHeight)
+			}
+			tbl.Print()
+		},
+	}
+
+	hostsCmd = &cobra.Command{
+		Use:   "hosts",
+		Short: "list hosts",
+		Run: func(cmd *cobra.Command, args []string) {
+			hosts, err := getHosts()
+			if err != nil {
+				log.Fatalln(err)
+			}
+			tbl := table.New("Host Key", "Address")
+			for _, host := range hosts {
+				tbl.AddRow(host.PublicKey, host.Address)
 			}
 			tbl.Print()
 		},
@@ -148,7 +198,10 @@ func formatBpsString(b uint64, t time.Duration) string {
 	return fmt.Sprintf("%.2f %cbps", speed, units[i])
 }
 
-func syncStats(bytes uint64, cost types.Currency) error {
+func syncStats() error {
+	mu.Lock()
+	defer mu.Unlock()
+
 	tmpFile := filepath.Join(dataDir, "stats.json.tmp")
 	statsFile := filepath.Join(dataDir, "stats.json")
 	f, err := os.Create(tmpFile)
@@ -157,7 +210,12 @@ func syncStats(bytes uint64, cost types.Currency) error {
 	}
 	defer f.Close()
 	enc := json.NewEncoder(f)
-	stats := uploadStats{Bytes: bytes, Cost: cost}
+	enc.SetIndent("", "  ")
+	stats := uploadStats{
+		Bytes: totalUploaded,
+		Cost:  cost,
+		Hosts: hostUploaded,
+	}
 	if err := enc.Encode(stats); err != nil {
 		return fmt.Errorf("failed to encode stats: %v", err)
 	} else if err := f.Sync(); err != nil {
@@ -200,7 +258,7 @@ func printProgress(w *wallet.SingleAddressLiteWallet, totalBytes, currentBytes u
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&dataDir, "data-dir", "d", ".", "data directory")
 	rootCmd.Flags().IntVarP(&workers, "workers", "w", 25, "number of workers to use for uploading")
-	rootCmd.AddCommand(contractsCmd, redistributeCmd, seedCmd, balanceCmd)
+	rootCmd.AddCommand(contractsCmd, redistributeCmd, seedCmd, balanceCmd, hostsCmd)
 }
 
 func main() {

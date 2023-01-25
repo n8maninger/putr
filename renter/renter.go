@@ -307,6 +307,7 @@ func New(dir string) (*Renter, error) {
 		renterKey: rhp.PrivateKey(ed25519.NewKeyFromSeed(frand.Bytes(ed25519.SeedSize))),
 		dir:       dir,
 
+		close:     make(chan struct{}),
 		locked:    make(map[rhp.PublicKey]bool),
 		contracts: make(map[rhp.PublicKey]ContractMeta),
 	}

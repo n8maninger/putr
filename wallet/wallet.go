@@ -342,6 +342,8 @@ func New(recoveryPhrase string) (*SingleAddressLiteWallet, error) {
 		priv: ed25519.PrivateKey(key),
 		addr: wallet.StandardAddress(key.PublicKey()),
 		used: make(map[types.SiacoinOutputID]bool),
+
+		close: make(chan struct{}),
 	}
 	if err := w.refresh(); err != nil {
 		return nil, fmt.Errorf("failed to refresh wallet: %w", err)
