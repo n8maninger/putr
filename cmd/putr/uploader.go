@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	uploadAmount = 250 << 30
+	uploadAmount = 100 << 30
 	duration     = 144 * 30 * 3
 )
 
@@ -42,8 +42,7 @@ func getHosts() ([]host, error) {
 	filter := make(sia.HostFilter)
 	filter.WithBenchmarked(true)
 	filter.WithMinAge(4320)
-	filter.WithMinUptime(0.75)
-	filter.WithMaxStoragePrice(types.SiacoinPrecision.Mul64(2000))
+	filter.WithMaxStoragePrice(types.SiacoinPrecision.Mul64(5000))
 	filter.WithMaxUploadPrice(types.SiacoinPrecision.Mul64(500))
 	filter.WithMaxContractPrice(types.SiacoinPrecision.Div64(2))
 	filter.WithMinUploadSpeed(5e6) // 5 Mbps
@@ -72,14 +71,6 @@ func getHosts() ([]host, error) {
 	frand.Shuffle(len(goodHosts), func(i, j int) {
 		goodHosts[i], goodHosts[j] = goodHosts[j], goodHosts[i]
 	})
-	var nickKey rhp.PublicKey
-	if err := nickKey.UnmarshalText([]byte("ed25519:210ad99f0e16a02ef055fdd0fcb6506106afeaab81b6834de96d6187ebae0c42")); err != nil {
-		return nil, fmt.Errorf("error decoding host public key: %w", err)
-	}
-	goodHosts = append([]host{{
-		Address:   "sia2.howitts.co.uk:9982",
-		PublicKey: nickKey,
-	}}, goodHosts...)
 	return goodHosts, nil
 }
 
