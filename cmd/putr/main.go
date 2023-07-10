@@ -37,13 +37,12 @@ var (
 	totalUploaded uint64
 	cost          types.Currency
 	hostUploaded  = make(map[string]uint64)
-	statsSync     = rate.Sometimes{First: 1, Interval: time.Minute}
 )
 
 var (
 	rootCmd = &cobra.Command{
 		Use:   "putr",
-		Short: "putr is a command line tool for uploading files to the Sia network",
+		Short: "putr is a command line tool for uploading junk data to the Sia network",
 		Run: func(cmd *cobra.Command, args []string) {
 			workCh := make(chan host, workers)
 			resultsCh := make(chan uploadResult, 1)

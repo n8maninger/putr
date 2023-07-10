@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/n8maninger/putr/wallet"
-	"github.com/siacentral/apisdkgo"
 	"github.com/spf13/cobra"
 	"go.sia.tech/siad/types"
 )
@@ -57,7 +56,7 @@ var (
 			defer release()
 
 			log.Printf("Creating %v outputs of %v each", count, outputAmount.HumanString())
-			siaCentralClient := apisdkgo.NewSiaClient()
+			siaCentralClient := apiClient()
 			if err := siaCentralClient.BroadcastTransactionSet([]types.Transaction{txn}); err != nil {
 				log.Fatalln("failed to broadcast transaction:", err)
 			}

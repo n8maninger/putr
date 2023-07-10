@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/n8maninger/putr/wallet"
-	"github.com/siacentral/apisdkgo"
 	"go.sia.tech/renterd/rhp/v2"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
@@ -59,7 +58,7 @@ type (
 var ErrNoContract = errors.New("no contract formed")
 
 func (r *Renter) refreshHeight() error {
-	client := apisdkgo.NewSiaClient()
+	client := apiClient()
 	tip, err := client.GetChainIndex()
 	if err != nil {
 		return fmt.Errorf("failed to get consensus state: %w", err)

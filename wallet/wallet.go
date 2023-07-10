@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/siacentral/apisdkgo"
 	"gitlab.com/NebulousLabs/encoding"
 	"go.sia.tech/renterd/wallet"
 	"go.sia.tech/siad/crypto"
@@ -18,7 +17,7 @@ import (
 	"lukechampine.com/frand"
 )
 
-var siaCentralClient = apisdkgo.NewSiaClient()
+var siaCentralClient = apiClient()
 
 type (
 	// A SingleAddressLiteWallet is a Siacoin wallet that only uses a single
@@ -45,9 +44,7 @@ type (
 )
 
 func (sw *SingleAddressLiteWallet) refresh() error {
-	client := apisdkgo.NewSiaClient()
-
-	tip, err := client.GetChainIndex()
+	tip, err := siaCentralClient.GetChainIndex()
 	if err != nil {
 		return fmt.Errorf("failed to get consensus state: %w", err)
 	}
@@ -188,9 +185,6 @@ func (sw *SingleAddressLiteWallet) FundTransaction(txn *types.Transaction, amoun
 
 // SignTransaction signs txn with the wallet's private key.
 func (sw *SingleAddressLiteWallet) SignTransaction(txn *types.Transaction, toSign []crypto.Hash, cf types.CoveredFields) error {
-	sw.mu.Lock()
-	currentHeight := sw.currentHeight
-	sw.mu.Unlock()
 	for _, id := range toSign {
 		i := len(txn.TransactionSignatures)
 		txn.TransactionSignatures = append(txn.TransactionSignatures, types.TransactionSignature{
@@ -198,7 +192,7 @@ func (sw *SingleAddressLiteWallet) SignTransaction(txn *types.Transaction, toSig
 			CoveredFields:  cf,
 			PublicKeyIndex: 0,
 		})
-		sigHash := txn.SigHash(i, types.BlockHeight(currentHeight))
+		sigHash := txn.SigHash(i, 500000)
 		txn.TransactionSignatures[i].Signature = ed25519.Sign(sw.priv, sigHash[:])
 	}
 	return nil

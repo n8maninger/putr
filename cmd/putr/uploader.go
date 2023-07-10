@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/n8maninger/putr/renter"
-	"github.com/siacentral/apisdkgo"
 	"github.com/siacentral/apisdkgo/sia"
 	"go.sia.tech/renterd/rhp/v2"
 	"go.sia.tech/siad/types"
@@ -18,8 +17,7 @@ import (
 )
 
 const (
-	uploadAmount = 100 << 30
-	duration     = 144 * 30 * 3
+	uploadAmount = 100 << 30 // 100 GiB
 )
 
 type (
@@ -38,35 +36,29 @@ type (
 )
 
 func getHosts() ([]host, error) {
-	sc := apisdkgo.NewSiaClient()
+	sc := apiClient()
 	filter := make(sia.HostFilter)
 	filter.WithBenchmarked(true)
-	filter.WithMinAge(4320)
 	filter.WithMaxStoragePrice(types.SiacoinPrecision.Mul64(5000))
 	filter.WithMaxUploadPrice(types.SiacoinPrecision.Mul64(500))
 	filter.WithMaxContractPrice(types.SiacoinPrecision.Div64(2))
-	filter.WithMinUploadSpeed(5e6) // 5 Mbps
 	filter.WithSort(sia.HostSortUploadSpeed, true)
 
 	var goodHosts []host
-	for i := 0; i < 10; i++ {
-		hosts, err := sc.GetActiveHosts(filter, i, 500)
-		if err != nil {
-			return nil, fmt.Errorf("error getting hosts: %w", err)
-		} else if len(hosts) == 0 {
-			break
-		}
+	hosts, err := sc.GetActiveHosts(filter, 0, 150)
+	if err != nil {
+		return nil, fmt.Errorf("error getting hosts: %w", err)
+	}
 
-		for _, h := range hosts {
-			var pub rhp.PublicKey
-			if _, err := hex.Decode(pub[:], []byte(h.PublicKey[8:])); err != nil {
-				return nil, fmt.Errorf("error decoding host public key: %w", err)
-			}
-			goodHosts = append(goodHosts, host{
-				PublicKey: pub,
-				Address:   h.NetAddress,
-			})
+	for _, h := range hosts {
+		var pub rhp.PublicKey
+		if _, err := hex.Decode(pub[:], []byte(h.PublicKey[8:])); err != nil {
+			return nil, fmt.Errorf("error decoding host public key: %w", err)
 		}
+		goodHosts = append(goodHosts, host{
+			PublicKey: pub,
+			Address:   h.NetAddress,
+		})
 	}
 	frand.Shuffle(len(goodHosts), func(i, j int) {
 		goodHosts[i], goodHosts[j] = goodHosts[j], goodHosts[i]
