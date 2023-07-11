@@ -292,53 +292,50 @@ func uploadWorker(ctx context.Context, worker int, workCh <-chan contractWork, l
 
 func updateAllowList(busClient *bus.Client) (added, removed int, _ error) {
 	siacentralClient := apisdkgo.NewSiaClient()
+
+	// get the current allowlist
 	allowlist, err := busClient.HostAllowlist(context.Background())
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get allowlist: %w", err)
 	}
+	// convert the allowlist to a map
 	allowedHosts := make(map[types.PublicKey]bool)
 	for _, pk := range allowlist {
 		allowedHosts[pk] = true
 	}
-
+	// get the top 200 hosts by upload speed
 	hosts, err := siacentralClient.GetActiveHosts(0, 200, sia.HostFilterBenchmarked(true), sia.HostFilterAcceptingContracts(true), sia.HostFilterSort(sia.HostSortUploadSpeed, true))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get decent hosts: %w", err)
 	}
-	goodHosts := make(map[types.PublicKey]bool)
+
+	var toAdd, toRemove []types.PublicKey
+	// add any hosts that aren't already in the allowlist
 	for _, host := range hosts {
 		var pk types.PublicKey
 		if err := pk.UnmarshalText([]byte(host.PublicKey)); err != nil {
 			continue
 		}
-		goodHosts[pk] = true
-	}
-
-	var toAdd, toRemove []types.PublicKey
-	for pk := range goodHosts {
 		if allowedHosts[pk] {
 			continue
 		}
-
 		toAdd = append(toAdd, pk)
 	}
 
-	for pk := range allowedHosts {
-		if goodHosts[pk] {
-			continue
+	// remove any hosts that are in the allowlist but aren't in the top 200
+	for _, pk := range allowlist {
+		if !allowedHosts[pk] {
+			toRemove = append(toRemove, pk)
 		}
-
-		toRemove = append(toRemove, pk)
+		delete(allowedHosts, pk)
 	}
 
+	// if nothing changed, return
 	if len(toAdd) == 0 && len(toRemove) == 0 {
 		return 0, 0, nil
 	}
-
-	if err := busClient.UpdateHostAllowlist(context.Background(), toAdd, toRemove, false); err != nil {
-		return 0, 0, fmt.Errorf("failed to update allowlist: %w", err)
-	}
-	return len(toAdd), len(toRemove), nil
+	// update the allowlist
+	return len(toAdd), len(toRemove), busClient.UpdateHostAllowlist(context.Background(), toAdd, toRemove, false)
 }
 
 func main() {
