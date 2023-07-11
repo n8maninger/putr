@@ -14,6 +14,7 @@ import (
 
 	proto2 "github.com/n8maninger/junkr/internal/rhp/v2"
 	proto3 "github.com/n8maninger/junkr/internal/rhp/v3"
+	"github.com/n8maninger/junkr/internal/threadgroup"
 	"github.com/siacentral/apisdkgo"
 	"github.com/siacentral/apisdkgo/sia"
 	rhp2 "go.sia.tech/core/rhp/v2"
@@ -50,6 +51,8 @@ var (
 	sectors int = 256
 
 	logLevel string
+
+	tg = threadgroup.New()
 
 	start         = time.Now()
 	mu            sync.Mutex // protects totalUploaded and totalCost
@@ -273,6 +276,12 @@ func uploadToHost(ctx context.Context, work contractWork, log *zap.Logger) (type
 }
 
 func uploadWorker(ctx context.Context, worker int, workCh <-chan contractWork, log *zap.Logger) {
+	ctx, cancel, err := tg.AddContext(ctx)
+	if err != nil {
+		log.Panic("failed to add thread", zap.Error(err))
+	}
+	defer cancel()
+
 	log = log.With(zap.Int("worker", worker))
 	for {
 		select {
@@ -363,7 +372,8 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Warn("shutting down")
-		time.Sleep(30 * time.Second)
+		tg.Stop()
+		time.Sleep(time.Minute)
 		os.Exit(-1)
 	}()
 
@@ -419,10 +429,11 @@ func main() {
 		}
 	}()
 
+top:
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			break top
 		default:
 		}
 
@@ -457,4 +468,6 @@ func main() {
 			}
 		}
 	}
+
+	<-tg.Done()
 }
