@@ -283,7 +283,6 @@ func uploadWorker(ctx context.Context, worker int, workCh <-chan contractWork, l
 			cost, err := uploadToHost(ctx, work, log)
 			if err != nil {
 				log.Error("failed to upload to host", zap.Error(err), zap.Stringer("host", work.hostKey), zap.Stringer("contract", work.contractID))
-				time.Sleep(15 * time.Second)
 				continue
 			}
 			log.Info("upload complete", zap.Int("sectors", sectors), zap.Stringer("cost", cost), zap.Duration("elapsed", time.Since(start)))
@@ -434,6 +433,12 @@ func main() {
 		if err != nil {
 			log.Error("failed to get contracts", zap.Error(err))
 			time.Sleep(15 * time.Second)
+			continue
+		}
+
+		if len(contracts) == 0 {
+			log.Info("waiting for contracts")
+			time.Sleep(10 * time.Minute)
 			continue
 		}
 
