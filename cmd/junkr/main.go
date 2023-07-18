@@ -21,6 +21,7 @@ import (
 	"go.sia.tech/core/types"
 	"go.sia.tech/renterd/api"
 	"go.sia.tech/renterd/bus"
+	"go.sia.tech/renterd/hostdb"
 	"go.sia.tech/renterd/wallet"
 	"go.sia.tech/renterd/worker"
 	"go.uber.org/zap"
@@ -234,8 +235,13 @@ func uploadToHost(ctx context.Context, work contractWork, log *zap.Logger) (type
 	budget = budget.Div64(20)
 
 	var cost types.Currency
+	var interactions []hostdb.Interaction
 	defer func() {
-		err := busClient.RecordContractSpending(context.Background(), []api.ContractSpendingRecord{
+		err := busClient.RecordInteractions(context.Background(), interactions)
+		if err != nil {
+			log.Error("failed to record interactions", zap.Error(err))
+		}
+		err = busClient.RecordContractSpending(context.Background(), []api.ContractSpendingRecord{
 			{
 				ContractSpending: api.ContractSpending{
 					Uploads: cost,
@@ -258,12 +264,19 @@ func uploadToHost(ctx context.Context, work contractWork, log *zap.Logger) (type
 		}
 
 		var sector [rhp2.SectorSize]byte
-		frand.Read(sector[:1024])
+		frand.Read(sector[:])
 		start := time.Now()
 		sectorCost, err := session.AppendSector(&sector, &contract, renterKey, contractPayment, budget, pt.HostBlockHeight)
+		interactions = append(interactions, hostdb.Interaction{
+			Host:      hostKey,
+			Success:   err == nil,
+			Type:      "junkUpload",
+			Timestamp: time.Now(),
+		})
 		if err != nil {
 			return cost, fmt.Errorf("failed to append sector %d: %w", i, err)
 		}
+
 		cost = cost.Add(sectorCost)
 		log.Debug("sector uploaded", zap.Stringer("cost", cost), zap.Duration("elapsed", time.Since(start)))
 		mu.Lock()
