@@ -434,9 +434,17 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				contracts, err := busClient.Contracts(context.Background())
+				if err != nil {
+					log.Error("failed to get contracts", zap.Error(err))
+				}
+				var totalSize uint64
+				for _, contract := range contracts {
+					totalSize += contract.Size
+				}
 				mu.Lock()
 				d := time.Since(start)
-				log.Info("upload status", zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
+				log.Info("upload status", zap.Uint64("contractSize", totalSize), zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
 				mu.Unlock()
 			}
 		}
