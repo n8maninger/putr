@@ -52,6 +52,7 @@ var (
 	sectors int = 256
 
 	logLevel string
+	logPath  string
 
 	tg = threadgroup.New()
 
@@ -59,6 +60,9 @@ var (
 	mu            sync.Mutex // protects totalUploaded and totalCost
 	totalUploaded uint64
 	totalCost     types.Currency
+	contractLocks = make(map[types.FileContractID]bool)
+
+	errAlreadyLocked = errors.New("contract already locked")
 )
 
 func init() {
@@ -70,6 +74,7 @@ func init() {
 	masterSeed = blake2b.Sum256(append([]byte("worker"), masterKey...))
 
 	flag.StringVar(&logLevel, "log.level", "info", "the log level to use")
+	flag.StringVar(&logPath, "log.path", "", "the path to write the log to")
 
 	flag.StringVar(&workerAddr, "worker.addr", workerAddr, "the address of the renterd worker API")
 	flag.StringVar(&workerPass, "worker.pass", workerPass, "the password of the renterd worker API")
@@ -148,16 +153,33 @@ func getContracts(ctx context.Context, bc *bus.Client) ([]api.ContractMetadata, 
 }
 
 func lockContract(ctx context.Context, bc *bus.Client, contractID types.FileContractID) (uint64, error) {
+	mu.Lock()
+	if contractLocks[contractID] {
+		mu.Unlock()
+		return 0, errAlreadyLocked
+	}
+	mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
-	return bc.AcquireContract(ctx, contractID, 1, 15*time.Minute)
+	lockID, err := bc.AcquireContract(ctx, contractID, 1, time.Hour)
+	if err != nil {
+		return 0, err
+	}
+
+	mu.Lock()
+	contractLocks[contractID] = true
+	mu.Unlock()
+	return lockID, nil
 }
 
 func releaseContract(ctx context.Context, bc *bus.Client, contractID types.FileContractID, lockID uint64) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
+	mu.Lock()
+	delete(contractLocks, contractID)
+	mu.Unlock()
 	return bc.ReleaseContract(ctx, contractID, lockID)
 }
 
@@ -176,8 +198,6 @@ func uploadToHost(ctx context.Context, work contractWork, log *zap.Logger) (type
 		}
 	}()
 
-	log = log.With(zap.Stringer("host", hostKey), zap.Stringer("contract", contractID))
-
 	accountID, err := workerClient.Account(ctx, hostKey)
 	if err != nil {
 		return types.ZeroCurrency, fmt.Errorf("failed to get account: %w", err)
@@ -188,6 +208,8 @@ func uploadToHost(ctx context.Context, work contractWork, log *zap.Logger) (type
 	settings, err := proto2.ScanSettings(ctx, hostKey, hostAddr)
 	if err != nil {
 		return types.ZeroCurrency, fmt.Errorf("failed to scan settings: %w", err)
+	} else if settings.RemainingStorage < uint64(sectors*2)*rhp2.SectorSize {
+		return types.ZeroCurrency, errors.New("host does not have enough storage")
 	}
 
 	addr, _, err := net.SplitHostPort(hostAddr)
@@ -302,9 +324,10 @@ func uploadWorker(ctx context.Context, worker int, workCh <-chan contractWork, l
 			return
 		case work := <-workCh:
 			start := time.Now()
+			log := log.With(zap.Stringer("host", work.hostKey), zap.Stringer("contract", work.contractID))
 			cost, err := uploadToHost(ctx, work, log)
 			if err != nil {
-				log.Error("failed to upload to host", zap.Error(err), zap.Stringer("host", work.hostKey), zap.Stringer("contract", work.contractID))
+				log.Error("failed to upload to host", zap.Error(err))
 				continue
 			}
 			log.Info("upload complete", zap.Int("sectors", sectors), zap.Stringer("cost", cost), zap.Duration("elapsed", time.Since(start)))
@@ -326,7 +349,7 @@ func updateAllowList(busClient *bus.Client) (added, removed int, _ error) {
 		allowedHosts[pk] = true
 	}
 	// get the top 200 hosts by upload speed
-	hosts, err := siacentralClient.GetActiveHosts(0, 200, sia.HostFilterBenchmarked(true), sia.HostFilterAcceptingContracts(true), sia.HostFilterSort(sia.HostSortUploadSpeed, true))
+	hosts, err := siacentralClient.GetActiveHosts(0, 300, sia.HostFilterBenchmarked(true), sia.HostFilterAcceptingContracts(true), sia.HostFilterSort(sia.HostSortUploadSpeed, true))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get decent hosts: %w", err)
 	}
@@ -373,6 +396,9 @@ func main() {
 		cfg.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
 	cfg.OutputPaths = []string{"stdout"}
+	if len(logPath) > 0 {
+		cfg.OutputPaths = append(cfg.OutputPaths, logPath)
+	}
 
 	log, err := cfg.Build()
 	if err != nil {
@@ -434,7 +460,11 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				contracts, err := getContracts(ctx, busClient)
+				balance, err := busClient.WalletBalance(ctx)
+				if err != nil {
+					log.Error("failed to get wallet balance", zap.Error(err))
+				}
+				contracts, err := busClient.Contracts(ctx)
 				if err != nil {
 					log.Error("failed to get contracts", zap.Error(err))
 				}
@@ -444,7 +474,7 @@ func main() {
 				}
 				mu.Lock()
 				d := time.Since(start)
-				log.Info("upload status", zap.Int("contracts", len(contracts)), zap.Uint64("contractSize", totalSize), zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
+				log.Info("upload status", zap.Stringer("balance", balance), zap.Int("contracts", len(contracts)), zap.Uint64("contractSize", totalSize), zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
 				mu.Unlock()
 			}
 		}
@@ -474,6 +504,13 @@ top:
 		log.Debug("got contracts", zap.Int("count", len(contracts)))
 
 		for _, contract := range contracts {
+			mu.Lock()
+			if contractLocks[contract.ID] {
+				mu.Unlock()
+				continue
+			}
+			mu.Unlock()
+
 			lockID, err := lockContract(ctx, busClient, contract.ID)
 			if err != nil {
 				log.Debug("failed to lock contract", zap.Stringer("contract", contract.ID), zap.Error(err))
