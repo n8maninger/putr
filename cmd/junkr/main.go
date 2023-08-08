@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -494,6 +495,11 @@ top:
 			time.Sleep(15 * time.Second)
 			continue
 		}
+
+		// shuffle the contracts so we don't always pick the same ones
+		rand.Shuffle(len(contracts), func(i, j int) {
+			contracts[i], contracts[j] = contracts[j], contracts[i]
+		})
 
 		if len(contracts) == 0 {
 			log.Info("waiting for contracts")
