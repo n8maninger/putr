@@ -211,7 +211,7 @@ func (s *Session) AppendSector(sector *[rhp2.SectorSize]byte, revision *rhp2.Con
 	stream := s.t.DialStream()
 	defer stream.Close()
 
-	stream.SetDeadline(time.Now().Add(10 * time.Second))
+	stream.SetDeadline(time.Now().Add(30 * time.Second))
 
 	req := rhp3.RPCExecuteProgramRequest{
 		FileContractID: revision.ID(),
