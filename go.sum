@@ -230,8 +230,6 @@ github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6L
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=
-github.com/siacentral/apisdkgo v0.2.7 h1:5LS5vD+zUtjnNn4oR/2vZjgy2IJHNJgma7L84xNli8s=
-github.com/siacentral/apisdkgo v0.2.7/go.mod h1:hlrt6prRR/XiJcRgQn5r73Yx22FyPhSjuq8mIusVnXs=
 github.com/siacentral/apisdkgo v0.2.8-0.20230516191524-1111b05ff2fa h1:PmrZzB5Tvv0R7qYx/o8AIrbjS9wDPn+qCCvvnlgDanI=
 github.com/siacentral/apisdkgo v0.2.8-0.20230516191524-1111b05ff2fa/go.mod h1:hlrt6prRR/XiJcRgQn5r73Yx22FyPhSjuq8mIusVnXs=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
@@ -324,8 +322,8 @@ go.sia.tech/jape v0.9.1-0.20230525021720-ecf031ecbffb h1:yLDEqkqC19E/HgBoq2Uhw9o
 go.sia.tech/jape v0.9.1-0.20230525021720-ecf031ecbffb/go.mod h1:4QqmBB+t3W7cNplXPj++ZqpoUb2PeiS66RLpXmEGap4=
 go.sia.tech/mux v1.2.0 h1:ofa1Us9mdymBbGMY2XH/lSpY8itFsKIo/Aq8zwe+GHU=
 go.sia.tech/mux v1.2.0/go.mod h1:Yyo6wZelOYTyvrHmJZ6aQfRoer3o4xyKQ4NmQLJrBSo=
-go.sia.tech/renterd v0.4.0-beta.0.20230710154347-31aaa3f9da0d h1:wkS3Teg7ruD2ED/v6z5STA3C1VuA0gZ6UZRBHTQMGfg=
-go.sia.tech/renterd v0.4.0-beta.0.20230710154347-31aaa3f9da0d/go.mod h1:hwyeKJ586aDtWihofirh2s6vwOKjs29Jjmb3HZ/142s=
+go.sia.tech/renterd v0.4.0-beta.0.20230818141632-cf082d665d50 h1:OKwJqqZzNgP3Vz/URpG9+TDWdUOVW+AEXpSaYNAJRmg=
+go.sia.tech/renterd v0.4.0-beta.0.20230818141632-cf082d665d50/go.mod h1:UICc9bRdVKHnhcBWJxzRWQ97Ylre/wq3nP5O0do3/uA=
 go.sia.tech/siad v1.5.10-0.20230228235644-3059c0b930ca h1:aZMg2AKevn7jKx+wlusWQfwSM5pNU9aGtRZme29q3O4=
 go.sia.tech/siad v1.5.10-0.20230228235644-3059c0b930ca/go.mod h1:h/1afFwpxzff6/gG5i1XdAgPK7dEY6FaibhK7N5F86Y=
 go.uber.org/atomic v1.4.0/go.mod h1:gD2HeocX3+yG+ygLZcrzQJaqmWj9AIm7n08wl/qW/PE=

@@ -6,7 +6,7 @@ require (
 	github.com/siacentral/apisdkgo v0.2.8-0.20230516191524-1111b05ff2fa
 	go.sia.tech/core v0.1.12-0.20230529164041-6347a98003be
 	go.sia.tech/mux v1.2.0
-	go.sia.tech/renterd v0.4.0-beta.0.20230710154347-31aaa3f9da0d
+	go.sia.tech/renterd v0.4.0-beta.0.20230818141632-cf082d665d50
 	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.8.0
 	lukechampine.com/frand v1.4.2
