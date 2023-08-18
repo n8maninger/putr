@@ -349,8 +349,8 @@ func updateAllowList(busClient *bus.Client) (added, removed int, _ error) {
 	for _, pk := range allowlist {
 		allowedHosts[pk] = true
 	}
-	// get the top 200 hosts by upload speed
-	hosts, err := siacentralClient.GetActiveHosts(0, 300, sia.HostFilterBenchmarked(true), sia.HostFilterAcceptingContracts(true), sia.HostFilterSort(sia.HostSortUploadSpeed, true))
+	// get the top 500 hosts by upload speed
+	hosts, err := siacentralClient.GetActiveHosts(0, 500, sia.HostFilterBenchmarked(true), sia.HostFilterAcceptingContracts(true), sia.HostFilterSort(sia.HostSortUploadSpeed, true))
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get decent hosts: %w", err)
 	}
@@ -469,13 +469,19 @@ func main() {
 				if err != nil {
 					log.Error("failed to get contracts", zap.Error(err))
 				}
+
+				contractSet, err := getContracts(ctx, busClient)
+				if err != nil {
+					log.Error("failed to get contracts", zap.Error(err))
+				}
+
 				var totalSize uint64
 				for _, contract := range contracts {
 					totalSize += contract.Size
 				}
 				mu.Lock()
 				d := time.Since(start)
-				log.Info("upload status", zap.Stringer("balance", balance), zap.Int("contracts", len(contracts)), zap.Uint64("contractSize", totalSize), zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
+				log.Info("upload status", zap.Stringer("balance", balance), zap.Int("contractSet", len(contractSet)), zap.Int("contracts", len(contracts)), zap.Uint64("contractSize", totalSize), zap.Uint64("uploaded", totalUploaded), zap.Stringer("cost", totalCost), zap.Duration("elapsed", d), zap.String("rate", formatBpsString(totalUploaded, d)))
 				mu.Unlock()
 			}
 		}
