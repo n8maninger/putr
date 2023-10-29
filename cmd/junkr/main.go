@@ -152,6 +152,41 @@ func getContracts(ctx context.Context, bc *bus.Client) ([]api.ContractMetadata, 
 	return bc.ContractSetContracts(ctx, contractSet)
 }
 
+func forceContractSetContracts(ctx context.Context, bc *bus.Client) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	used := make(map[types.FileContractID]bool)
+	var contractIDs []types.FileContractID
+	contracts, err := bc.Contracts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get contracts: %w", err)
+	}
+
+	for _, contract := range contracts {
+		if used[contract.ID] {
+			continue
+		}
+		used[contract.ID] = true
+		contractIDs = append(contractIDs, contract.ID)
+	}
+
+	contracts, err = bc.ContractSetContracts(ctx, contractSet)
+	if err != nil {
+		return fmt.Errorf("failed to get contract set contracts: %w", err)
+	}
+
+	for _, contract := range contracts {
+		if used[contract.ID] {
+			continue
+		}
+		used[contract.ID] = true
+		contractIDs = append(contractIDs, contract.ID)
+	}
+
+	return bc.SetContractSet(ctx, contractSet, contractIDs)
+}
+
 func lockContract(ctx context.Context, bc *bus.Client, contractID types.FileContractID) (uint64, error) {
 	mu.Lock()
 	if contractLocks[contractID] {
@@ -411,7 +446,7 @@ func main() {
 	busClient := bus.NewClient(busAddr, busPass)
 
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 
 		added, removed, err := updateAllowList(busClient)
@@ -419,6 +454,10 @@ func main() {
 			log.Warn("failed to update allowlist", zap.Error(err))
 		} else {
 			log.Info("updated allowlist", zap.Int("added", added), zap.Int("removed", removed))
+		}
+
+		if err := forceContractSetContracts(ctx, busClient); err != nil {
+			log.Warn("failed to force contract set contracts", zap.Error(err))
 		}
 
 		for {
@@ -434,6 +473,10 @@ func main() {
 				continue
 			}
 			log.Info("updated allowlist", zap.Int("added", added), zap.Int("removed", removed))
+
+			if err := forceContractSetContracts(ctx, busClient); err != nil {
+				log.Warn("failed to force contract set contracts", zap.Error(err))
+			}
 		}
 	}()
 
