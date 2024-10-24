@@ -149,11 +149,16 @@ func main() {
 		}
 	}()
 
+	var wg sync.WaitGroup
 	for n := 1; n <= workers; n++ {
-		go uploadWorker(ctx, n, log)
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			uploadWorker(ctx, n, log)
+		}(n)
 	}
 
 	<-ctx.Done()
 	log.Info("shutting down...")
-	time.Sleep(10 * time.Second)
+	wg.Wait()
 }
