@@ -139,10 +139,14 @@ func main() {
 				times := uploadTimes
 				timeMu.Unlock()
 				var avg time.Duration
-				for _, t := range times {
-					avg += t
+				if len(times) == 0 {
+					avg = time.Second
+				} else {
+					for _, t := range times {
+						avg += t
+					}
+					avg /= time.Duration(len(times))
 				}
-				avg /= time.Duration(len(times))
 				size := sectors * rhp2.SectorSize * 3 * int64(workers) // use the size after erasure coding and multiply by the number of workers to estimate the total upload speed
 				log.Info("average upload time", zap.String("averageSpeed", formatBpsString(size, avg)))
 			}
